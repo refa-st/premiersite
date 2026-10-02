@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bataille Navale de Poudlard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>⚡ Bataille Navale de Poudlard</h1>
+    <p class="subtitle">Choisis une case, puis prononce « Bombarda Maxima » !</p>
+
+    <section class="hud">
+      <div>Sortilèges : <strong id="spells">35</strong></div>
+      <div>Navires ennemis : <strong id="ships-left">5</strong></div>
+      <div>Cible : <strong id="target">—</strong></div>
+    </section>
+
+    <div id="grid" class="grid" aria-label="Grille de jeu"></div>
+
+    <p id="message" class="message" role="status"></p>
+
+    <section class="controls">
+      <button id="mic-btn" type="button">🎤 Activer le micro</button>
+      <p id="heard" class="heard"></p>
+      <form id="spell-form">
+        <input id="spell-input" type="text" placeholder="…ou écris le sortilège" autocomplete="off">
+        <button type="submit">Lancer</button>
+      </form>
+      <button id="new-game" type="button">🔄 Nouvelle partie</button>
+    </section>
+
+    <ul id="fleet" class="fleet"></ul>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
+ 
