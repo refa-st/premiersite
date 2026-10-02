@@ -2,39 +2,29 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bataille Navale de Poudlard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#10131f">
+  <title>Labyrinthe à bille</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <h1>⚡ Bataille Navale de Poudlard</h1>
-    <p class="subtitle">Choisis une case, puis prononce « Bombarda Maxima » !</p>
+  <header id="hud">
+    <span>Niveau <b id="level">1</b></span>
+    <span id="time">0.0 s</span>
+    <button id="recal" type="button">🎯 Recalibrer</button>
+    <p id="hint"></p>
+  </header>
 
-    <section class="hud">
-      <div>Sortilèges : <strong id="spells">35</strong></div>
-      <div>Navires ennemis : <strong id="ships-left">5</strong></div>
-      <div>Cible : <strong id="target">—</strong></div>
-    </section>
+  <canvas id="game"></canvas>
 
-    <div id="grid" class="grid" aria-label="Grille de jeu"></div>
-
-    <p id="message" class="message" role="status"></p>
-
-    <section class="controls">
-      <button id="mic-btn" type="button">🎤 Activer le micro</button>
-      <p id="heard" class="heard"></p>
-      <form id="spell-form">
-        <input id="spell-input" type="text" placeholder="…ou écris le sortilège" autocomplete="off">
-        <button type="submit">Lancer</button>
-      </form>
-      <button id="new-game" type="button">🔄 Nouvelle partie</button>
-    </section>
-
-    <ul id="fleet" class="fleet"></ul>
-  </main>
+  <div id="overlay">
+    <h1 id="title">🌀 Labyrinthe à bille</h1>
+    <p id="text">Penche ton téléphone pour faire rouler la bille jusqu'à la sortie dorée.</p>
+    <p class="small">Tiens le téléphone dans ta position la plus confortable avant d'appuyer : ce sera ta position « à plat ».</p>
+    <button id="start" type="button">Commencer</button>
+    <p id="msg"></p>
+  </div>
 
   <script src="script.js"></script>
 </body>
 </html>
- 

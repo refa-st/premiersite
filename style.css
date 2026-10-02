@@ -1,139 +1,89 @@
 :root {
-  --gold: #d4af37;
-  --night: #0e1230;
-  --sea: #16306b;
-  --fire: #ff5a1f;
+  --bg: #10131f;
+  --gold: #f5c542;
 }
 
 * { box-sizing: border-box; }
 
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: #eef1ff;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 body {
-  margin: 0;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  font-family: Georgia, "Times New Roman", serif;
-  color: #f3ecd2;
-  background: radial-gradient(circle at top, #1f2a6b, var(--night) 70%);
-}
-
-main {
-  width: min(94vw, 560px);
-  padding: 20px 0 40px;
-  text-align: center;
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.7rem;
-  color: var(--gold);
-  text-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
-}
-
-.subtitle { margin: 0.4rem 0 1rem; opacity: 0.85; }
-
-.hud {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.9rem;
-}
-.hud strong { color: var(--gold); }
-
-/* Grille */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 2px;
-  aspect-ratio: 1;
-  padding: 4px;
-  background: #0a1240;
-  border: 2px solid var(--gold);
-  border-radius: 10px;
-}
-
-.cell {
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  background: var(--sea);
-  cursor: pointer;
-  font-size: clamp(0.7rem, 3vw, 1.2rem);
-  transition: background 0.15s;
-}
-.cell.hidden:hover { background: #2446a0; }
-.cell.selected { outline: 3px solid var(--gold); background: #3a5cc0; }
-
-.cell.miss { background: #0b2a55; cursor: default; }
-.cell.miss::after { content: "💧"; }
-
-.cell.boom { background: var(--fire); cursor: default; }
-.cell.boom::after { content: "💥"; }
-
-.cell.reveal { background: #4a3b1c; cursor: default; }
-.cell.reveal::after { content: "⛵"; }
-
-.cell.fresh.boom { animation: boom 0.6s ease-out; }
-.cell.fresh.miss { animation: splash 0.4s ease-out; }
-
-@keyframes boom {
-  0%   { transform: scale(0.3); filter: brightness(4); }
-  60%  { transform: scale(1.6); }
-  100% { transform: scale(1); filter: none; }
-}
-@keyframes splash {
-  from { transform: scale(1.5); opacity: 0.3; }
-  to   { transform: scale(1); opacity: 1; }
-}
-
-.grid.shake { animation: shake 0.5s; }
-@keyframes shake {
-  0%, 100% { transform: translate(0); }
-  20% { transform: translate(-6px, 3px); }
-  40% { transform: translate(6px, -3px); }
-  60% { transform: translate(-4px, -2px); }
-  80% { transform: translate(4px, 2px); }
-}
-
-/* Messages et commandes */
-.message { min-height: 3em; font-size: 1.05rem; }
-.heard { min-height: 1.3em; margin: 0; font-style: italic; opacity: 0.75; }
-
-.controls {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
 }
-.controls button {
-  padding: 8px 14px;
+
+#hud {
+  width: 100%;
+  padding: 8px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+#hud button {
+  padding: 6px 12px;
   border: none;
   border-radius: 8px;
-  background: var(--gold);
-  color: #1b1400;
-  font: inherit;
-  cursor: pointer;
-}
-.controls button:disabled { opacity: 0.4; cursor: not-allowed; }
-.controls input {
-  padding: 8px;
-  border: 1px solid var(--gold);
-  border-radius: 8px;
-  background: #0a1240;
+  background: #2c3a6b;
   color: inherit;
   font: inherit;
 }
 
-.fleet {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 14px;
-  margin: 18px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.85rem;
+#hint {
+  width: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.8;
 }
-.fleet .sunk { text-decoration: line-through; opacity: 0.45; }
+#hint:empty { display: none; }
+
+canvas {
+  display: block;
+  border-radius: 6px;
+  box-shadow: 0 0 24px rgba(80, 120, 255, 0.35);
+}
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(10, 12, 24, 0.93);
+}
+#overlay[hidden] { display: none; }
+
+#overlay h1 { margin: 0; color: var(--gold); }
+#overlay p { margin: 0; max-width: 30ch; line-height: 1.4; }
+#overlay .small { font-size: 0.85rem; opacity: 0.75; }
+
+#start {
+  padding: 14px 28px;
+  border: none;
+  border-radius: 12px;
+  background: var(--gold);
+  color: #241a00;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+#msg { color: #ff9a9a; font-size: 0.9rem; }

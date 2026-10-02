@@ -1,287 +1,374 @@
-const SIZE = 10;
-const MAX_SPELLS = 35;
-const FLEET = [
-  { name: "Le Navire de Durmstrang", size: 5 },
-  { name: "L'Hippogriffe des mers", size: 4 },
-  { name: "La Barque de Hagrid", size: 3 },
-  { name: "Le Chaudron flottant", size: 3 },
-  { name: "Le Gobelet de Feu", size: 2 },
-];
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const hudEl = document.getElementById("hud");
+const levelEl = document.getElementById("level");
+const timeEl = document.getElementById("time");
+const hintEl = document.getElementById("hint");
+const recalBtn = document.getElementById("recal");
+const overlay = document.getElementById("overlay");
+const titleEl = document.getElementById("title");
+const textEl = document.getElementById("text");
+const startBtn = document.getElementById("start");
+const msgEl = document.getElementById("msg");
 
-const gridEl = document.getElementById("grid");
-const messageEl = document.getElementById("message");
-const spellsEl = document.getElementById("spells");
-const shipsLeftEl = document.getElementById("ships-left");
-const targetEl = document.getElementById("target");
-const fleetEl = document.getElementById("fleet");
-const micBtn = document.getElementById("mic-btn");
-const heardEl = document.getElementById("heard");
-const formEl = document.getElementById("spell-form");
-const inputEl = document.getElementById("spell-input");
+/* Réglages (les distances sont en « cases » du labyrinthe) */
+const MAX_ANGLE = 25; // inclinaison (en degrés) pour la force maximale
+const ACCEL = 35; // force de l'inclinaison
+const MAX_SPEED = 9; // vitesse maximale de la bille
+const FRICTION = 2.5; // frottements
+const BOUNCE = 0.3; // rebond contre les murs
+const RADIUS = 0.3; // rayon de la bille
 
-let cells, ships, spellsLeft, selected, gameOver;
-let lastCast = 0;
+let maze,
+  W,
+  H,
+  cell = 20;
+let ball = { x: 1.5, y: 1.5, vx: 0, vy: 0 };
+let level = 1;
+let running = false;
+let startTime = 0;
+let elapsed = 0;
+let lastFrame = 0;
 
-/* ---------- Partie ---------- */
+/* ---------- Capteur d'inclinaison ---------- */
 
-function newGame() {
-  cells = Array.from({ length: SIZE * SIZE }, () => ({
-    ship: null,
-    state: "hidden",
-    fresh: false,
-  }));
-  ships = FLEET.map((f) => ({ ...f, cells: [], sunk: false }));
-  placeShips();
-  spellsLeft = MAX_SPELLS;
-  selected = null;
-  gameOver = false;
-  setMessage("Les navires ennemis rôdent… Choisis une case !");
-  render();
+let hasSensor = false;
+const raw = { beta: 0, gamma: 0 };
+let offset = { x: 0, y: 0 };
+const keys = {};
+
+window.addEventListener("deviceorientation", (e) => {
+  if (e.beta === null || e.gamma === null) return;
+  hasSensor = true;
+  raw.beta = e.beta;
+  raw.gamma = e.gamma;
+});
+
+/* Inclinaison dans le repère de l'écran, selon l'orientation du téléphone */
+function sensorXY() {
+  const a = screen.orientation
+    ? screen.orientation.angle
+    : window.orientation || 0;
+  const angle = (a + 360) % 360;
+  switch (angle) {
+    case 90:
+      return { x: -raw.beta, y: -raw.gamma };
+    case 180:
+      return { x: -raw.gamma, y: -raw.beta };
+    case 270:
+      return { x: raw.beta, y: raw.gamma };
+    default:
+      return { x: raw.gamma, y: raw.beta };
+  }
 }
 
-function placeShips() {
-  ships.forEach((ship, id) => {
-    let placed = false;
-    while (!placed) {
-      const horizontal = Math.random() < 0.5;
-      const row = Math.floor(
-        Math.random() * (horizontal ? SIZE : SIZE - ship.size + 1),
-      );
-      const col = Math.floor(
-        Math.random() * (horizontal ? SIZE - ship.size + 1 : SIZE),
-      );
-      const idx = [];
-      for (let k = 0; k < ship.size; k++) {
-        idx.push(
-          (row + (horizontal ? 0 : k)) * SIZE + col + (horizontal ? k : 0),
-        );
+function calibrate() {
+  offset = sensorXY();
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+/* Renvoie une inclinaison entre -1 et 1 sur chaque axe */
+function getTilt() {
+  if (hasSensor) {
+    const s = sensorXY();
+    return {
+      x: clamp((s.x - offset.x) / MAX_ANGLE, -1, 1),
+      y: clamp((s.y - offset.y) / MAX_ANGLE, -1, 1),
+    };
+  }
+  // Secours pour tester sur ordinateur : les flèches du clavier
+  return {
+    x: (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0),
+    y: (keys.ArrowDown ? 1 : 0) - (keys.ArrowUp ? 1 : 0),
+  };
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key.startsWith("Arrow")) {
+    keys[e.key] = true;
+    e.preventDefault();
+  }
+});
+window.addEventListener("keyup", (e) => {
+  if (e.key.startsWith("Arrow")) keys[e.key] = false;
+});
+
+/* iPhone : il faut demander l'autorisation, depuis un clic */
+async function enableSensors() {
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === "function") {
+    try {
+      const result = await DOE.requestPermission();
+      if (result !== "granted") {
+        msgEl.textContent =
+          "Accès au capteur refusé. Sur iPhone, ferme l'onglet Safari, rouvre la page puis accepte la demande.";
+        return false;
       }
-      if (idx.every((i) => cells[i].ship === null)) {
-        idx.forEach((i) => (cells[i].ship = id));
-        ship.cells = idx;
-        placed = true;
-      }
+    } catch (err) {
+      msgEl.textContent = "Impossible d'activer le capteur : " + err.message;
+      return false;
     }
+  }
+  return true;
+}
+
+function waitForSensor(ms) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    (function check() {
+      if (hasSensor || performance.now() - t0 > ms) resolve();
+      else setTimeout(check, 50);
+    })();
   });
 }
 
-function label(i) {
-  return String.fromCharCode(65 + (i % SIZE)) + (Math.floor(i / SIZE) + 1);
-}
-
-function setMessage(text) {
-  messageEl.textContent = text;
-}
-
-/* ---------- Affichage ---------- */
-
-function render() {
-  gridEl.innerHTML = "";
-  cells.forEach((c, i) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className =
-      "cell " +
-      c.state +
-      (i === selected ? " selected" : "") +
-      (c.fresh ? " fresh" : "");
-    b.dataset.index = i;
-    b.setAttribute("aria-label", "Case " + label(i));
-    gridEl.appendChild(b);
-  });
-
-  spellsEl.textContent = spellsLeft;
-  shipsLeftEl.textContent = ships.filter((s) => !s.sunk).length;
-  targetEl.textContent = selected === null ? "—" : label(selected);
-  fleetEl.innerHTML = ships
-    .map(
-      (s) => `<li class="${s.sunk ? "sunk" : ""}">${s.name} (${s.size})</li>`,
-    )
-    .join("");
-
-  cells.forEach((c) => (c.fresh = false));
-}
-
-function shake() {
-  gridEl.classList.add("shake");
-  setTimeout(() => gridEl.classList.remove("shake"), 500);
-}
-
-/* ---------- Sons (Web Audio, sans fichier) ---------- */
-
-let audioCtx;
-function noise(duration, cutoff) {
+async function keepAwake() {
   try {
-    audioCtx = audioCtx || new AudioContext();
-    audioCtx.resume();
-    const len = Math.floor(audioCtx.sampleRate * duration);
-    const buffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < len; i++)
-      data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = audioCtx.createBufferSource();
-    src.buffer = buffer;
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = cutoff;
-    src.connect(filter).connect(audioCtx.destination);
-    src.start();
+    if ("wakeLock" in navigator) await navigator.wakeLock.request("screen");
   } catch (e) {
-    /* le son est un bonus : on ignore les erreurs */
+    /* facultatif */
   }
 }
 
-/* ---------- Sortilège ---------- */
+/* ---------- Labyrinthe ---------- */
 
-function cast() {
-  if (gameOver) return;
+/* 1 = mur, 0 = couloir. Algorithme du « parcours en profondeur ». */
+function generateMaze(cols, rows) {
+  const w = cols * 2 + 1;
+  const h = rows * 2 + 1;
+  const g = Array.from({ length: h }, () => Array(w).fill(1));
+  const stack = [[1, 1]];
+  g[1][1] = 0;
 
-  const now = Date.now();
-  if (now - lastCast < 1500) return; // évite les doubles déclenchements de la voix
-  lastCast = now;
-
-  if (selected === null) {
-    setMessage("Choisis d'abord une case à viser !");
-    return;
-  }
-
-  const cell = cells[selected];
-  const target = label(selected);
-  spellsLeft--;
-
-  if (cell.ship !== null) {
-    const ship = ships[cell.ship];
-    ship.sunk = true;
-    ship.cells.forEach((i) => {
-      cells[i].state = "boom";
-      cells[i].fresh = true;
+  while (stack.length) {
+    const [x, y] = stack[stack.length - 1];
+    const options = [
+      [2, 0],
+      [-2, 0],
+      [0, 2],
+      [0, -2],
+    ].filter(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+      return nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && g[ny][nx] === 1;
     });
-    shake();
-    noise(1.0, 400);
-    setMessage(`💥 BOOM ! ${ship.name} explose en ${target} !`);
-  } else {
-    cell.state = "miss";
-    cell.fresh = true;
-    noise(0.25, 2500);
-    setMessage(`💧 Plouf… rien en ${target}.`);
-  }
-
-  selected = null;
-  checkEnd();
-  render();
-}
-
-function checkEnd() {
-  if (ships.every((s) => s.sunk)) {
-    gameOver = true;
-    setMessage(
-      `🏆 Victoire ! Toute la flotte est détruite, il te reste ${spellsLeft} sortilège(s).`,
-    );
-  } else if (spellsLeft === 0) {
-    gameOver = true;
-    cells.forEach((c) => {
-      if (c.ship !== null && c.state === "hidden") c.state = "reveal";
-    });
-    setMessage(
-      "☠️ Plus de sortilèges… la flotte ennemie s'échappe. Retente ta chance !",
-    );
-  }
-}
-
-function isSpell(text) {
-  const t = text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  return t.includes("bomb") && t.includes("max");
-}
-
-/* ---------- Clic sur la grille ---------- */
-
-gridEl.addEventListener("click", (e) => {
-  const b = e.target.closest(".cell");
-  if (!b || gameOver) return;
-  const i = Number(b.dataset.index);
-  if (cells[i].state !== "hidden") return;
-  selected = i;
-  setMessage(`Cible verrouillée : ${label(i)}. Dis « Bombarda Maxima » !`);
-  render();
-});
-
-/* ---------- Saisie au clavier (secours) ---------- */
-
-formEl.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const text = inputEl.value;
-  inputEl.value = "";
-  if (isSpell(text)) cast();
-  else setMessage("Ce sortilège est inconnu… essaie « Bombarda Maxima ».");
-});
-
-/* ---------- Reconnaissance vocale ---------- */
-
-const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-let listening = false;
-
-function toggleMic() {
-  if (listening) {
-    listening = false;
-    recognition.stop();
-    micBtn.textContent = "🎤 Activer le micro";
-    return;
-  }
-
-  recognition = new SpeechRecognition();
-  recognition.lang = "fr-FR";
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  recognition.onresult = (event) => {
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const text = event.results[i][0].transcript;
-      heardEl.textContent = `« ${text.trim()} »`;
-      if (isSpell(text)) cast();
+    if (options.length === 0) {
+      stack.pop();
+      continue;
     }
-  };
+    const [dx, dy] = options[Math.floor(Math.random() * options.length)];
+    g[y + dy / 2][x + dx / 2] = 0;
+    g[y + dy][x + dx] = 0;
+    stack.push([x + dx, y + dy]);
+  }
+  return g;
+}
 
-  recognition.onerror = (event) => {
-    if (
-      event.error === "not-allowed" ||
-      event.error === "service-not-allowed"
-    ) {
-      listening = false;
-      micBtn.textContent = "🎤 Activer le micro";
-      setMessage(
-        "Micro refusé : autorise-le dans ton navigateur, ou écris le sortilège.",
-      );
-    }
-  };
+function layout() {
+  if (!maze) return;
+  const availW = window.innerWidth;
+  const availH = window.innerHeight - hudEl.offsetHeight - 8;
+  cell = Math.max(8, Math.floor(Math.min(availW / W, availH / H)));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * cell * dpr;
+  canvas.height = H * cell * dpr;
+  canvas.style.width = W * cell + "px";
+  canvas.style.height = H * cell + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
 
-  recognition.onend = () => {
-    if (listening) {
-      try {
-        recognition.start();
-      } catch (e) {
-        /* déjà relancé */
+function startLevel() {
+  const cols = Math.min(3 + level, 8);
+  const rows = Math.min(5 + level * 2, 14);
+  maze = generateMaze(cols, rows);
+  W = cols * 2 + 1;
+  H = rows * 2 + 1;
+  ball = { x: 1.5, y: 1.5, vx: 0, vy: 0 };
+  levelEl.textContent = level;
+  timeEl.textContent = "0.0 s";
+  layout();
+  overlay.hidden = true;
+  running = true;
+  startTime = performance.now();
+  lastFrame = performance.now();
+}
+
+function win() {
+  running = false;
+  if (navigator.vibrate) navigator.vibrate(200);
+  titleEl.textContent = "🎉 Sortie atteinte !";
+  textEl.textContent = `Niveau ${level} terminé en ${elapsed.toFixed(1)} s.`;
+  startBtn.textContent = "Niveau suivant";
+  startBtn.dataset.mode = "next";
+  overlay.hidden = false;
+}
+
+/* ---------- Physique ---------- */
+
+function collide() {
+  const r = RADIUS;
+  const x0 = Math.floor(ball.x - r),
+    x1 = Math.floor(ball.x + r);
+  const y0 = Math.floor(ball.y - r),
+    y1 = Math.floor(ball.y + r);
+
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      if ((maze[ty] || [])[tx] !== 1) continue;
+
+      // point du mur (la case) le plus proche du centre de la bille
+      const cx = clamp(ball.x, tx, tx + 1);
+      const cy = clamp(ball.y, ty, ty + 1);
+      const dx = ball.x - cx;
+      const dy = ball.y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= r * r) continue;
+
+      const d = Math.sqrt(d2) || 0.0001;
+      const nx = dx / d;
+      const ny = dy / d;
+      ball.x = cx + nx * r;
+      ball.y = cy + ny * r;
+
+      const vn = ball.vx * nx + ball.vy * ny;
+      if (vn < 0) {
+        ball.vx -= (1 + BOUNCE) * vn * nx;
+        ball.vy -= (1 + BOUNCE) * vn * ny;
       }
     }
-  };
-
-  listening = true;
-  recognition.start();
-  micBtn.textContent = "🛑 Couper le micro";
+  }
 }
 
-if (!SpeechRecognition) {
-  micBtn.disabled = true;
-  heardEl.textContent =
-    "Voix non supportée ici : utilise Chrome ou Edge, ou écris le sortilège.";
-} else {
-  micBtn.addEventListener("click", toggleMic);
+function update(dt) {
+  const t = getTilt();
+  const steps = 4;
+  const h = dt / steps;
+
+  for (let i = 0; i < steps; i++) {
+    ball.vx += t.x * ACCEL * h;
+    ball.vy += t.y * ACCEL * h;
+
+    const f = Math.max(0, 1 - FRICTION * h);
+    ball.vx *= f;
+    ball.vy *= f;
+
+    const speed = Math.hypot(ball.vx, ball.vy);
+    if (speed > MAX_SPEED) {
+      ball.vx *= MAX_SPEED / speed;
+      ball.vy *= MAX_SPEED / speed;
+    }
+
+    ball.x += ball.vx * h;
+    ball.y += ball.vy * h;
+    collide();
+  }
 }
 
-document.getElementById("new-game").addEventListener("click", newGame);
+/* ---------- Dessin ---------- */
 
-newGame();
+function draw() {
+  if (!maze) return;
+
+  ctx.fillStyle = "#0b0e1a";
+  ctx.fillRect(0, 0, W * cell, H * cell);
+
+  ctx.fillStyle = "#3a4a8c";
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (maze[y][x] === 1) ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+
+  // sortie
+  const ex = (W - 1.5) * cell;
+  const ey = (H - 1.5) * cell;
+  ctx.save();
+  ctx.shadowColor = "#f5c542";
+  ctx.shadowBlur = cell;
+  ctx.fillStyle = "#f5c542";
+  ctx.beginPath();
+  ctx.arc(ex, ey, cell * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // bille
+  const bx = ball.x * cell;
+  const by = ball.y * cell;
+  const br = RADIUS * cell;
+  const grad = ctx.createRadialGradient(
+    bx - br * 0.3,
+    by - br * 0.3,
+    br * 0.1,
+    bx,
+    by,
+    br,
+  );
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(1, "#6fb1ff");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* ---------- Boucle principale ---------- */
+
+function frame(ts) {
+  const dt = Math.min((ts - lastFrame) / 1000, 1 / 30);
+  lastFrame = ts;
+
+  if (running) {
+    update(dt);
+    elapsed = (performance.now() - startTime) / 1000;
+    timeEl.textContent = elapsed.toFixed(1) + " s";
+    if (Math.hypot(ball.x - (W - 1.5), ball.y - (H - 1.5)) < 0.5) win();
+  }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Boutons et événements ---------- */
+
+startBtn.addEventListener("click", async () => {
+  if (startBtn.dataset.mode === "next") {
+    level++;
+    startLevel();
+    return;
+  }
+
+  msgEl.textContent = "";
+  const ok = await enableSensors();
+  if (!ok) return;
+
+  await waitForSensor(800);
+  if (hasSensor) {
+    calibrate();
+    hintEl.textContent = "";
+  } else {
+    hintEl.textContent =
+      "Aucun capteur détecté (sur téléphone, la page doit être en HTTPS). Flèches du clavier activées.";
+  }
+
+  keepAwake();
+  startLevel();
+});
+
+recalBtn.addEventListener("click", () => {
+  if (hasSensor) calibrate();
+});
+
+window.addEventListener("resize", layout);
+
+const onRotate = () =>
+  setTimeout(() => {
+    if (hasSensor) calibrate();
+    layout();
+  }, 300);
+if (screen.orientation) screen.orientation.addEventListener("change", onRotate);
+else window.addEventListener("orientationchange", onRotate);
+
+requestAnimationFrame(frame);
